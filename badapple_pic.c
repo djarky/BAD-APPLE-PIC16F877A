@@ -23,8 +23,8 @@
 // ============================================================
 //  SELECCIÓN DE PIC (descomentar UNO)
 // ============================================================
-#define USE_PIC16    // PIC16F877A — ~6 KB para datos, ~170-480 frames
-//#define USE_PIC18    // PIC18F4550 — ~28 KB para datos, ~790-1000 frames
+//#define USE_PIC16    // PIC16F877A — ~6 KB para datos, ~170-480 frames
+#define USE_PIC18    // PIC18F4550 — ~28 KB para datos, ~790-1000 frames
 
 // ============================================================
 //  CONFIGURACIÓN PIC16F877A
@@ -80,7 +80,7 @@
 #define LCD_EN     PIN_D3
 
 // Driver flexible (soporta RW a GND y compatible con LiquidCrystal de Arduino)
-#include <lcd_flex.c">
+#include <lcd_flex.h>
 //ver repo lcd_flex_ccs de djarky
 
 // NOTA: Si en el futuro deseas usar la librería de fábrica <lcd.c>,

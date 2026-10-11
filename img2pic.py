@@ -33,9 +33,11 @@ from glob import glob
 
 
 # ============================================================
-#  Límites de memoria (estimados, descontando código ~2-4KB)
+#  Límites de memoria (ajustados para dejar espacio a main + driver LCD)
 # ============================================================
-PIC16_FLASH_AVAILABLE = 6144    # PIC16F877A: ~6 KB para datos
+# PIC16F877A: 8192 words totales en 4 páginas de 2048 words.
+# Descontando código (~1.5K words) y fragmentación: ~4.5 KB (4608 bytes)
+PIC16_FLASH_AVAILABLE = 4608
 PIC18_FLASH_AVAILABLE = 28672   # PIC18F4550: ~28 KB para datos
 
 
@@ -197,9 +199,9 @@ def process_frames(file_list, use_gaps=True, threshold=0, max_frames=None, max_b
 
 
 def generate_ccs_header(data, num_frames, stats, fps, output_file):
-    """Genera .h compatible con CCS C Compiler v5 (dividido en chunks <= 1024 bytes)."""
+    """Genera .h compatible con CCS C Compiler v5 (dividido en chunks <= 512 bytes)."""
     delay_ms = 1000 // fps if fps > 0 else 250
-    CHUNK_SIZE = 1024
+    CHUNK_SIZE = 512
     chunks = [data[i:i + CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)]
 
     with open(output_file, 'w') as f:
