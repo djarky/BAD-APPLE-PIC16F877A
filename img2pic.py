@@ -29,7 +29,13 @@ Requiere: Pillow (PIL)  ->  pip install Pillow
 from PIL import Image
 import argparse
 import sys
+import re
 from glob import glob
+
+
+def natural_sort_key(s):
+    """Ordenamiento natural (numérico) para ordenar correctamente secuencias como png (1)..png (1000)."""
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
 
 # ============================================================
@@ -118,26 +124,31 @@ def compare_chars(c1, c2, threshold=0):
     return diff > threshold
 
 
-def process_frames(file_list, use_gaps=True, threshold=0, max_frames=None, max_bytes=None):
+import os
+
+
+def process_frames(file_list, use_gaps=True, threshold=0, max_frames=None, max_bytes=None, split=True):
     """
     Procesa frames con delta encoding.
-    Se detiene si alcanza max_frames o si los datos exceden max_bytes.
+    Si split=True y max_bytes está definido, divide la secuencia en múltiples partes
+    de modo que cada parte quepa holgadamente dentro de max_bytes.
+    Cada parte inicia con un keyframe (bitmask 0xFF, todos los 8 chars actualizados).
 
-    Retorna: (data_bytes, num_frames, stats)
+    Retorna una lista de partes: [ { 'data': bytes, 'num_frames': int, 'stats': dict, 'start_frame': int, 'end_frame': int }, ... ]
     """
-    data = bytearray()
+    sorted_files = sorted(file_list, key=natural_sort_key)
+    if max_frames is not None:
+        sorted_files = sorted_files[:max_frames]
+
+    parts = []
+    current_data = bytearray()
     prev_frame = None
-    num_frames = 0
-    total_chars = 0
-    changed_chars = 0
-    skipped = 0
+    part_start_idx = 0
+    part_frames = 0
+    part_total_chars = 0
+    part_changed_chars = 0
 
-    for fn in sorted(file_list):
-        # Verificar límite de frames
-        if max_frames is not None and num_frames >= max_frames:
-            skipped = len(file_list) - num_frames
-            break
-
+    for i, fn in enumerate(sorted_files):
         matrix, width, height = load_and_binarize(fn)
         frame = img2frame(matrix, width, height, use_gaps)
 
@@ -145,11 +156,9 @@ def process_frames(file_list, use_gaps=True, threshold=0, max_frames=None, max_b
             print(f"  WARN: Imagen inválida: {fn}, saltando...", file=sys.stderr)
             continue
 
-        # Calcular datos de este frame ANTES de agregarlo
-        frame_bytes = bytearray()
+        # Primer frame de la parte: KEYFRAME (bitmask 0xFF, todos los chars)
         if prev_frame is None:
-            bitmask = 0xFF
-            frame_bytes.append(bitmask)
+            frame_bytes = bytearray([0xFF])
             for ci in range(8):
                 for rb in frame[ci]:
                     frame_bytes.append(rb)
@@ -159,75 +168,115 @@ def process_frames(file_list, use_gaps=True, threshold=0, max_frames=None, max_b
             char_data = bytearray()
             frame_changed = 0
             for ci in range(8):
-                total_chars += 1
                 if compare_chars(frame[ci], prev_frame[ci], threshold):
                     bitmask |= (1 << ci)
                     frame_changed += 1
                     for rb in frame[ci]:
                         char_data.append(rb)
-            frame_bytes.append(bitmask)
+            frame_bytes = bytearray([bitmask])
             frame_bytes.extend(char_data)
 
-        # Verificar límite de bytes
-        if max_bytes is not None and (len(data) + len(frame_bytes)) > max_bytes:
-            skipped = len(file_list) - num_frames
-            print(f"  INFO: Límite de flash alcanzado ({max_bytes} bytes) en frame {num_frames}", file=sys.stderr)
-            break
+        # Verificar límite de flash para la parte actual
+        if max_bytes is not None and (len(current_data) + len(frame_bytes)) > max_bytes and part_frames > 0:
+            if not split:
+                print(f"  INFO: Límite de flash alcanzado ({max_bytes} bytes) en frame {part_frames} (sin split)", file=sys.stderr)
+                break
 
-        data.extend(frame_bytes)
-        changed_chars += frame_changed
+            # Guardar parte actual completada
+            stats = {
+                'total_chars': part_total_chars,
+                'changed_chars': part_changed_chars,
+                'compression_pct': 100.0 * part_changed_chars / part_total_chars if part_total_chars > 0 else 0,
+                'data_size': len(current_data),
+                'total_available': len(sorted_files),
+            }
+            parts.append({
+                'data': bytes(current_data),
+                'num_frames': part_frames,
+                'stats': stats,
+                'start_frame': part_start_idx + 1,
+                'end_frame': i,
+            })
+
+            # Iniciar nueva parte comenzando en el frame actual como KEYFRAME
+            current_data = bytearray()
+            part_start_idx = i
+            part_frames = 0
+            part_total_chars = 0
+            part_changed_chars = 0
+            prev_frame = None
+
+            frame_bytes = bytearray([0xFF])
+            for ci in range(8):
+                for rb in frame[ci]:
+                    frame_bytes.append(rb)
+            frame_changed = 8
+
+        current_data.extend(frame_bytes)
+        part_changed_chars += frame_changed
+        part_total_chars += 8
         prev_frame = frame
-        num_frames += 1
+        part_frames += 1
 
-        if num_frames % 100 == 0:
-            print(f"  Procesados {num_frames} frames ({len(data)} bytes)...", file=sys.stderr)
+        if (i + 1) % 100 == 0:
+            print(f"  Procesados {i + 1} frames...", file=sys.stderr)
 
-    if prev_frame is None:
-        total_chars = 0
-    else:
-        total_chars += 8  # primer frame
+    if part_frames > 0:
+        stats = {
+            'total_chars': part_total_chars,
+            'changed_chars': part_changed_chars,
+            'compression_pct': 100.0 * part_changed_chars / part_total_chars if part_total_chars > 0 else 0,
+            'data_size': len(current_data),
+            'total_available': len(sorted_files),
+        }
+        parts.append({
+            'data': bytes(current_data),
+            'num_frames': part_frames,
+            'stats': stats,
+            'start_frame': part_start_idx + 1,
+            'end_frame': part_start_idx + part_frames,
+        })
 
-    stats = {
-        'total_chars': total_chars,
-        'changed_chars': changed_chars,
-        'compression_pct': 100.0 * changed_chars / total_chars if total_chars > 0 else 0,
-        'data_size': len(data),
-        'skipped_frames': skipped,
-        'total_available': len(file_list),
-    }
-    return bytes(data), num_frames, stats
+    return parts
 
 
-def generate_ccs_header(data, num_frames, stats, fps, output_file):
+def generate_ccs_header(data, num_frames, stats, fps, output_file, part_num=1, total_parts=1, start_frame=1, end_frame=None):
     """Genera .h compatible con CCS C Compiler v5 (dividido en chunks <= 512 bytes)."""
     delay_ms = 1000 // fps if fps > 0 else 250
     CHUNK_SIZE = 512
     chunks = [data[i:i + CHUNK_SIZE] for i in range(0, len(data), CHUNK_SIZE)]
+    if end_frame is None:
+        end_frame = start_frame + num_frames - 1
+
+    filename = os.path.basename(output_file)
 
     with open(output_file, 'w') as f:
         f.write("/*\n")
-        f.write(" * frame_data.h - Datos Bad Apple comprimidos (delta encoding)\n")
+        f.write(f" * {filename} - Datos Bad Apple comprimidos (delta encoding)\n")
         f.write(f" * Generado por img2pic.py para CCS C Compiler v5\n")
         f.write(f" *\n")
-        f.write(f" * Frames:          {num_frames} de {stats['total_available']} disponibles\n")
-        f.write(f" * Tamaño datos:    {len(data)} bytes ({len(data)/1024:.1f} KB)\n")
-        f.write(f" * Chars cambiados: {stats['compression_pct']:.1f}%\n")
-        f.write(f" * FPS:             {fps} ({delay_ms} ms/frame)\n")
-        if stats['skipped_frames'] > 0:
-            f.write(f" * Frames omitidos: {stats['skipped_frames']} (por límite de flash)\n")
-        f.write(f" *\n")
+        if total_parts > 1:
+            f.write(f" * [PARTE {part_num} DE {total_parts}] -> Frames {start_frame} a {end_frame}\n")
+        f.write(f" * Frames en esta parte: {num_frames}\n")
+        f.write(f" * Tamaño datos:        {len(data)} bytes ({len(data)/1024:.1f} KB)\n")
+        f.write(f" * Chars cambiados:     {stats['compression_pct']:.1f}%\n")
+        f.write(f" * FPS:                 {fps} ({delay_ms} ms/frame)\n")
+        f.write(" *\n")
         f.write(" * Formato: [bitmask][char_data...] por frame\n")
-        f.write(" * Chunks: Dividido en bloques <= 1024 bytes para evitar\n")
-        f.write(" *         'Error 71: Out of ROM (A segment is too large)' en PIC16/PIC18.\n")
+        f.write(" * Chunks: Bloques de 512 bytes para evitar 'Out of ROM' en CCS C.\n")
         f.write(" */\n\n")
         f.write("#ifndef FRAME_DATA_H\n")
         f.write("#define FRAME_DATA_H\n\n")
         f.write(f"#define TOTAL_FRAMES    {num_frames}u\n")
         f.write(f"#define FRAME_DATA_SIZE {len(data)}u\n")
-        f.write(f"#define FRAME_DELAY_MS  {delay_ms}u\n\n")
+        f.write(f"#define FRAME_DELAY_MS  {delay_ms}u\n")
+        f.write(f"#define PART_NUMBER     {part_num}u\n")
+        f.write(f"#define PART_TOTAL      {total_parts}u\n")
+        f.write(f"#define START_FRAME_NUM {start_frame}u\n")
+        f.write(f"#define END_FRAME_NUM   {end_frame}u\n\n")
 
         for c_idx, chunk_data in enumerate(chunks):
-            f.write(f"// Chunk {c_idx} ({len(chunk_data)} bytes) - cabe holgadamente en páginas de 2048 words\n")
+            f.write(f"// Chunk {c_idx} ({len(chunk_data)} bytes)\n")
             f.write(f"const unsigned int8 frame_chunk_{c_idx}[{len(chunk_data)}] = {{\n")
             for i in range(0, len(chunk_data), 16):
                 line = chunk_data[i:i+16]
@@ -236,52 +285,48 @@ def generate_ccs_header(data, num_frames, stats, fps, output_file):
                 f.write(f"    {hex_vals}{comma}\n")
             f.write("};\n\n")
 
-        f.write("// Función unificada de lectura por chunks\n")
-        f.write("// CCS C ubica cada chunk en una página de ROM distinta según haya espacio libre\n")
+        f.write("// Función de lectura por chunks con switch (eficiente en ROM y velocidad)\n")
         f.write("unsigned int8 rom_read(unsigned int16 idx) {\n")
-        for c_idx in range(len(chunks) - 1):
-            limit = (c_idx + 1) * CHUNK_SIZE
-            offset_str = f" - {c_idx * CHUNK_SIZE}u" if c_idx > 0 else ""
-            f.write(f"    if (idx < {limit}u) return frame_chunk_{c_idx}[idx{offset_str}];\n")
-        last_idx = len(chunks) - 1
-        last_offset = f" - {last_idx * CHUNK_SIZE}u" if last_idx > 0 else ""
-        f.write(f"    return frame_chunk_{last_idx}[idx{last_offset}];\n")
+        f.write("    unsigned int8 chunk = (unsigned int8)(idx >> 9);\n")
+        f.write("    unsigned int16 offset = idx & 0x1FFu;\n")
+        f.write("    switch (chunk) {\n")
+        for c_idx in range(len(chunks)):
+            f.write(f"        case {c_idx}: return frame_chunk_{c_idx}[offset];\n")
+        f.write("        default: return 0;\n")
+        f.write("    }\n")
         f.write("}\n\n")
         f.write("#endif // FRAME_DATA_H\n")
 
 
-def print_summary(num_frames, stats, fps):
-    """Imprime resumen y estimaciones."""
-    data_size = stats['data_size']
+def print_multi_part_summary(parts, fps):
+    """Imprime un resumen completo de todas las partes generadas."""
     delay_ms = 1000 // fps if fps > 0 else 250
+    total_frames = sum(p['num_frames'] for p in parts)
+    total_bytes = sum(len(p['data']) for p in parts)
+    total_duration = total_frames * delay_ms / 1000.0
 
-    print(f"\n{'='*55}", file=sys.stderr)
-    print(f"  RESUMEN DE CONVERSIÓN", file=sys.stderr)
-    print(f"{'='*55}", file=sys.stderr)
-    print(f"  Frames procesados:  {num_frames} / {stats['total_available']}", file=sys.stderr)
-    if stats['skipped_frames'] > 0:
-        print(f"  Frames omitidos:    {stats['skipped_frames']} (límite de flash)", file=sys.stderr)
-    print(f"  Tamaño datos:       {data_size} bytes ({data_size/1024:.1f} KB)", file=sys.stderr)
-    print(f"  Chars actualizados: {stats['compression_pct']:.1f}%", file=sys.stderr)
+    print(f"\n{'='*65}", file=sys.stderr)
+    print(f"  RESUMEN DE CONVERSIÓN ({len(parts)} {'PARTE' if len(parts)==1 else 'PARTES'})", file=sys.stderr)
+    print(f"{'='*65}", file=sys.stderr)
+    print(f"  Frames totales cubiertos: {total_frames}", file=sys.stderr)
+    print(f"  Duración total a {fps} FPS:  {total_duration:.1f} segundos", file=sys.stderr)
+    print(f"  Memoria acumulada:        {total_bytes} bytes ({total_bytes/1024:.1f} KB)\n", file=sys.stderr)
 
-    if num_frames > 0:
-        bpf = data_size / num_frames
-        dur = num_frames * delay_ms / 1000.0
-        print(f"  Bytes/frame prom:   {bpf:.1f}", file=sys.stderr)
-        print(f"  Duración a {fps} FPS:  {dur:.1f} segundos", file=sys.stderr)
+    print(f"  {'Parte':<7} | {'Frames':<16} | {'Tamaño':<12} | {'Duración':<10} | {'Archivo'}", file=sys.stderr)
+    print(f"  {'-'*7}-+-{'-'*16}-+-{'-'*12}-+-{'-'*10}-+-{'-'*15}", file=sys.stderr)
 
-        print(f"\n  {'PIC16F877A':>14} | {'PIC18F4550':>14}", file=sys.stderr)
-        print(f"  {'-'*14}-+-{'-'*14}", file=sys.stderr)
+    for idx, p in enumerate(parts):
+        part_num = idx + 1
+        nf = p['num_frames']
+        sf = p['start_frame']
+        ef = p['end_frame']
+        sz = len(p['data'])
+        dur = nf * delay_ms / 1000.0
+        fname = "frame_data.h" if (len(parts) == 1 or part_num == 1) else f"frame_data{part_num}.h"
+        f_range = f"{nf} ({sf}..{ef})"
+        print(f"  P{part_num:<5} | {f_range:<16} | {sz:>5} B ({sz/1024:.1f}K) | {dur:>5.1f}s     | {fname}", file=sys.stderr)
 
-        fits16 = "✅ CABE" if data_size <= PIC16_FLASH_AVAILABLE else "❌ NO CABE"
-        fits18 = "✅ CABE" if data_size <= PIC18_FLASH_AVAILABLE else "❌ NO CABE"
-        print(f"  {fits16:>14} | {fits18:>14}", file=sys.stderr)
-
-        max16 = min(stats['total_available'], int(PIC16_FLASH_AVAILABLE / bpf))
-        max18 = min(stats['total_available'], int(PIC18_FLASH_AVAILABLE / bpf))
-        print(f"  {'~'+str(max16)+' frames':>14} | {'~'+str(max18)+' frames':>14}", file=sys.stderr)
-
-    print(f"{'='*55}\n", file=sys.stderr)
+    print(f"{'='*65}\n", file=sys.stderr)
 
 
 def main():
@@ -290,23 +335,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Ejemplos:
-  # Modo estándar compatible con ambos PICs:
-  python3 img2pic.py --frames "frames/*.png" --pic16 --output frame_data.h
+  # PIC16 con división automática (genera frame_data.h, frame_data2.h, frame_data3.h):
+  python3 img2pic.py --frames "pngs/*.png" --no-gaps --pic16 --threshold 3 --fps 6
 
-  # Modo PIC18, máximo de frames, 10 FPS:
-  python3 img2pic.py --frames "pngs/*.png" --no-gaps --pic18 --fps 10 --output frame_data.h
-
-  # PIC16 con compresión agresiva para más frames:
-  python3 img2pic.py --frames "pngs/*.png" --no-gaps --pic16 --threshold 5 --fps 8
-
-  # Frames manuales limitados:
-  python3 img2pic.py --frames "pngs/*.png" --no-gaps --max-frames 300 --fps 6
+  # PIC18 entran 1000 frames en 1 archivo:
+  python3 img2pic.py --frames "pngs/*.png" --no-gaps --pic18 --fps 10
         """
     )
     parser.add_argument('--frames', required=True,
                         help='Glob de los frames PNG (ej: "frames/*.png")')
     parser.add_argument('--output', default='frame_data.h',
-                        help='Archivo .h de salida (default: frame_data.h)')
+                        help='Archivo base .h de salida (default: frame_data.h)')
     parser.add_argument('--no-gaps', action='store_true',
                         help='Modo sin gaps para imágenes 20x16')
     parser.add_argument('--threshold', type=int, default=0,
@@ -314,48 +353,71 @@ Ejemplos:
     parser.add_argument('--fps', type=int, default=4,
                         help='FPS objetivo (default: 4)')
     parser.add_argument('--max-frames', type=int, default=None,
-                        help='Máximo de frames a procesar (default: todos los que quepan)')
+                        help='Máximo de frames a procesar')
+    parser.add_argument('--no-split', action='store_true',
+                        help='No dividir en partes (detenerse al primer límite de flash)')
 
-    # Opciones de PIC (mutuamente excluyentes con max-frames)
+    # Opciones de PIC
     pic_group = parser.add_mutually_exclusive_group()
     pic_group.add_argument('--pic16', action='store_true',
-                           help='Limitar datos al flash del PIC16F877A (~6 KB)')
+                           help='Limitar datos al flash del PIC16F877A (~4.5 KB)')
     pic_group.add_argument('--pic18', action='store_true',
                            help='Limitar datos al flash del PIC18F4550 (~28 KB)')
 
     args = parser.parse_args()
 
-    files = sorted(glob(args.frames))
+    files = sorted(glob(args.frames), key=natural_sort_key)
     if not files:
         print(f"ERROR: No se encontraron archivos con '{args.frames}'", file=sys.stderr)
         sys.exit(1)
 
-    # Determinar límite de bytes
     max_bytes = None
     if args.pic16:
         max_bytes = PIC16_FLASH_AVAILABLE
-        print(f"Modo: PIC16F877A (límite {PIC16_FLASH_AVAILABLE} bytes)", file=sys.stderr)
+        print(f"Modo: PIC16F877A (límite {PIC16_FLASH_AVAILABLE} bytes por parte)", file=sys.stderr)
     elif args.pic18:
         max_bytes = PIC18_FLASH_AVAILABLE
-        print(f"Modo: PIC18F4550 (límite {PIC18_FLASH_AVAILABLE} bytes)", file=sys.stderr)
+        print(f"Modo: PIC18F4550 (límite {PIC18_FLASH_AVAILABLE} bytes por parte)", file=sys.stderr)
 
     mode_str = 'sin gaps (20×16)' if args.no_gaps else 'con gaps (24×18)'
     print(f"Encontrados {len(files)} frames", file=sys.stderr)
-    print(f"Formato: {mode_str}", file=sys.stderr)
-    print(f"Umbral: {args.threshold} (0=lossless)", file=sys.stderr)
-    print(f"FPS: {args.fps}", file=sys.stderr)
-    if args.max_frames:
-        print(f"Max frames: {args.max_frames}", file=sys.stderr)
+    print(f"Formato: {mode_str} | Umbral: {args.threshold} | FPS: {args.fps}", file=sys.stderr)
+    print(f"División en partes (multi-part): {'Desactivada' if args.no_split else 'Activada'}", file=sys.stderr)
     print(f"Procesando...\n", file=sys.stderr)
 
     use_gaps = not args.no_gaps
-    data, num_frames, stats = process_frames(
-        files, use_gaps, args.threshold, args.max_frames, max_bytes
+    parts = process_frames(
+        files, use_gaps, args.threshold, args.max_frames, max_bytes, split=(not args.no_split)
     )
 
-    generate_ccs_header(data, num_frames, stats, args.fps, args.output)
-    print_summary(num_frames, stats, args.fps)
-    print(f"Archivo generado: {args.output}", file=sys.stderr)
+    if not parts:
+        print("ERROR: No se generó ninguna parte de datos.", file=sys.stderr)
+        sys.exit(1)
+
+    # Generar archivos .h para cada parte
+    out_dir = os.path.dirname(args.output) or '.'
+    base_name = os.path.basename(args.output)
+    stem, ext = os.path.splitext(base_name)
+    total_parts = len(parts)
+
+    for idx, p in enumerate(parts):
+        part_num = idx + 1
+        if total_parts == 1:
+            part_file = os.path.join(out_dir, f"{stem}{ext}")
+            generate_ccs_header(p['data'], p['num_frames'], p['stats'], args.fps, part_file, 1, 1, p['start_frame'], p['end_frame'])
+        else:
+            if part_num == 1:
+                # Parte 1 se escribe a frame_data.h Y a frame_data1.h
+                part_file_main = os.path.join(out_dir, f"{stem}{ext}")
+                part_file_num = os.path.join(out_dir, f"{stem}1{ext}")
+                generate_ccs_header(p['data'], p['num_frames'], p['stats'], args.fps, part_file_main, part_num, total_parts, p['start_frame'], p['end_frame'])
+                generate_ccs_header(p['data'], p['num_frames'], p['stats'], args.fps, part_file_num, part_num, total_parts, p['start_frame'], p['end_frame'])
+            else:
+                part_file = os.path.join(out_dir, f"{stem}{part_num}{ext}")
+                generate_ccs_header(p['data'], p['num_frames'], p['stats'], args.fps, part_file, part_num, total_parts, p['start_frame'], p['end_frame'])
+
+    print_multi_part_summary(parts, args.fps)
+    print(f"✅ Generadas {total_parts} partes listas para compilar.", file=sys.stderr)
 
 
 if __name__ == '__main__':

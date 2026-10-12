@@ -12,49 +12,66 @@ Basado en el algoritmo de compresión por deltas de `img2lcdino` (arduinocelenta
 |---|---|
 | [`badapple_pic.c`](file:///home/vibecode/DevS/bad%20apple/pic_port/badapple_pic.c) | Código fuente en C para CCS Compiler v5. Soporta PIC16F877A y PIC18F4550 mediante un simple `#define`. |
 | [`lcd_flex/`](file:///home/vibecode/DevS/bad%20apple/pic_port/lcd_flex/) | Driver flexible y avanzado para LCD 16x2 y 20x4 en CCS C, con paridad total frente a `LiquidCrystal` de Arduino. |
-| [`img2pic.py`](file:///home/vibecode/DevS/bad%20apple/pic_port/img2pic.py) | Script de conversión en Python (usa Pillow/PIL). Convierte frames PNG en array `rom const unsigned int8` comprimido con deltas. |
-| [`gen_rapido.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_rapido.sh) | **Script de 1 solo paso**: Genera `frame_data.h` al instante con parámetros óptimos predefinidos. |
-| [`gen_pic16.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_pic16.sh) | Script interactivo con menú para generar frames adaptados al límite de flash del **PIC16F877A** (~6 KB). |
-| [`gen_pic18.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_pic18.sh) | Script interactivo con menú para generar hasta **1000 frames** para el **PIC18F4550** (~28 KB). |
+| [`setup_env.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/setup_env.sh) | **Configurador del entorno Python**: Crea `.venv` e instala dependencias (Pillow, OpenCV) sin requerir `sudo`. |
+| [`video2frames.py`](file:///home/vibecode/DevS/bad%20apple/pic_port/video2frames.py) | **Extractor de frames**: Lee el video MP4 local y guarda los frames 20x16 binarizados en `frames/`. |
+| [`img2pic.py`](file:///home/vibecode/DevS/bad%20apple/pic_port/img2pic.py) | Conversor de frames PNG a datos delta organizados en chunks de 512B con switch `rom_read`. Soporta multi-parte automático. |
+| [`gen_video.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_video.sh) | **Extractor desde video MP4 local**: Busca el video en esta carpeta y extrae los fotogramas a la carpeta `frames/`. |
+| [`gen_pic18.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_pic18.sh) | Generador para **PIC18F4550** (~28 KB útiles, hasta **1000 frames completos** en 1 parte). |
+| [`gen_pic16.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_pic16.sh) | Generador para **PIC16F877A** (~4.5 KB útiles por parte, genera automáticamente `frame_data.h`, `frame_data2.h`, etc.). |
+| [`gen_rapido.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_rapido.sh) | **Generación rápida de 1 comando**: Usa la carpeta `frames/` para generar `frame_data.h` directamente. |
 | [`frame_data.h`](file:///home/vibecode/DevS/bad%20apple/pic_port/frame_data.h) | Cabecera C generada con los metadatos y el array de animación en ROM. |
 
 ---
 
-## ⚡ Inicio Rápido con los Scripts (`.sh`)
+## ⚡ Preparación del Entorno (100% sin sudo)
 
-Para no lidiar con comandos largos de Python, tienes disponibles tres scripts bash automáticos:
-
-### 1. Generación Rápida (Recomendado)
+Para asegurar que todo funcione sin modificar paquetes del sistema operativo ni requerir privilegios de superusuario (`sudo`):
 
 ```bash
-# Para PIC16F877A (6 FPS, threshold=3, cabe en ~6KB):
-./gen_rapido.sh pic16
+# Desde pic_port/:
+./setup_env.sh
+```
+Este script crea el entorno virtual `.venv` local e instala automáticamente `Pillow`, `opencv-python-headless` y `numpy`. Todos los scripts `.sh` detectan y utilizan este `.venv` por defecto.
 
-# Para PIC18F4550 (10 FPS, threshold=2, 1000 frames completos en ~28KB):
-./gen_rapido.sh pic18
+---
 
-# Personalizado (PIC, FPS, umbral de pérdida):
-./gen_rapido.sh pic16 8 5       # PIC16 a 8 fps con compresión agresiva (threshold=5)
-./gen_rapido.sh pic18 12 0      # PIC18 a 12 fps lossless (threshold=0)
+## 🎬 Flujo de Trabajo: Video -> Frames -> Código C
+
+### Paso 1: Extraer los Frames del Video Original a la carpeta `frames/`
+El video (`東方Bad Apple!! ＰＶ影絵.mp4` o cualquier otro `.mp4`) se busca automáticamente en la misma carpeta:
+```bash
+# Extrae los fotogramas binarizados (20x16) a la carpeta frames/
+./gen_video.sh
 ```
 
-### 2. Generadores Interactivos (Paso a paso)
+### Paso 2: Convertir los Frames a `frame_data.h` para el PIC
 
-Si prefieres elegir los frames y ver las opciones interactivamente en consola:
-
+#### Para PIC18F4550 (Recomendado - entran hasta 1000 frames completos):
 ```bash
-# Para PIC16F877A:
-./gen_pic16.sh
-
-# Para PIC18F4550:
 ./gen_pic18.sh
 ```
 
-Los scripts te permitirán elegir entre:
-- **Set de 1000 frames** (20x16 sin gaps entre caracteres).
-- **Set de 76 frames** (24x18 con espacios intermedios de 1 px).
-- Nivel de compresión (`0` lossless, `2-3` suave, `5` agresiva).
-- Tasa de refresco deseada (FPS).
+#### Para PIC16F877A (Con división automática en partes):
+```bash
+./gen_pic16.sh
+```
+
+#### O Generación rápida en 1 comando:
+```bash
+./gen_rapido.sh pic18       # Para PIC18F4550 (10 FPS, threshold=2)
+./gen_rapido.sh pic16       # Para PIC16F877A (6 FPS, threshold=3)
+```
+### 4. Sistema Multi-Parte (Video Completo por Partes)
+Cuando el video o set de frames supera la memoria de un microcontrolador (por ejemplo, los 1000 frames en el **PIC16F877A** con límite de ~4.5 KB), los scripts dividen automáticamente el video en partes secuenciales:
+- `frame_data.h` / `frame_data1.h`: Parte 1 (ej. frames 1..406)
+- `frame_data2.h`: Parte 2 (ej. frames 407..751)
+- `frame_data3.h`: Parte 3 (ej. frames 752..1000)
+
+Cada parte arranca con un **Keyframe** limpio (todos los caracteres sincronizados). Para compilar cualquiera de las partes, simplemente cambia en [`badapple_pic.c`](file:///home/vibecode/DevS/bad%20apple/pic_port/badapple_pic.c):
+```c
+#define USE_PART  1   // Cambia a 2, 3, etc. para compilar esa parte
+```
+En la pantalla LCD 16x2 se indicará automáticamente en qué parte estás: `Frames: 406  P1/3`.
 
 ---
 

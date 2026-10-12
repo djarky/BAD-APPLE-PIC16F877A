@@ -1,75 +1,69 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # ============================================================
 #  gen_pic18.sh - Genera frame_data.h para PIC18F4550
-#  Modo máximo: hasta ~28KB de flash para datos
+#  Usa el set de frames (20x16) de frames/ (o pngs/)
+#  Flash disponible: ~28 KB (hasta 1000 frames en 1 parte)
 # ============================================================
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONVERTER="$SCRIPT_DIR/img2pic.py"
 OUTPUT="$SCRIPT_DIR/frame_data.h"
 
-FRAMES_1000="../Bad-Apple-On-Arduino-LCD-main/pngs/*.png"
-FRAMES_76="../badapple/img2lcdino-main/frames/*.png"
-
-echo "╔══════════════════════════════════════════╗"
-echo "║  Generador de frames para PIC18F4550     ║"
-echo "║  Flash disponible: ~28 KB                ║"
-echo "╚══════════════════════════════════════════╝"
-echo ""
-
-shopt -s nullglob
-files_1000=("$SCRIPT_DIR/../Bad-Apple-On-Arduino-LCD-main/pngs/"*.png)
-files_76=("$SCRIPT_DIR/../badapple/img2lcdino-main/frames/"*.png)
-shopt -u nullglob
-
-HAS_1000=false
-HAS_76=false
-[ ${#files_1000[@]} -gt 0 ] && HAS_1000=true
-[ ${#files_76[@]} -gt 0 ] && HAS_76=true
-
-if ! $HAS_1000 && ! $HAS_76; then
-    echo "ERROR: No se encontraron frames PNG."
+# 1. Detectar Python con entorno virtual (.venv)
+if [ -x "$SCRIPT_DIR/.venv/bin/python3" ]; then
+    PYTHON="$SCRIPT_DIR/.venv/bin/python3"
+elif [ -x "$SCRIPT_DIR/../.venv/bin/python3" ]; then
+    PYTHON="$SCRIPT_DIR/../.venv/bin/python3"
+elif [ -n "$VIRTUAL_ENV" ] && command -v python3 &>/dev/null; then
+    PYTHON="python3"
+elif command -v python3 &>/dev/null; then
+    PYTHON="python3"
+else
+    echo "ERROR: No se encontró Python 3 ni el entorno virtual .venv."
+    echo "Ejecuta ./setup_env.sh para crearlo automáticamente sin sudo."
     exit 1
 fi
 
-echo "Frames encontrados:"
-$HAS_1000 && echo "  [1] 1000 frames (20x16, sin gaps) - Bad-Apple-On-Arduino-LCD"
-$HAS_76   && echo "  [2] 76 frames (24x18, con gaps)   - img2lcdino"
+# 2. Selección de carpeta de frames (prioridad a ./frames local)
+FRAMES_DIR="$SCRIPT_DIR/frames"
+shopt -s nullglob
+files=("$FRAMES_DIR/"*.png)
+shopt -u nullglob
+
+if [ ${#files[@]} -eq 0 ]; then
+    FRAMES_DIR="$SCRIPT_DIR/../Bad-Apple-On-Arduino-LCD-main/pngs"
+    shopt -s nullglob
+    files=("$FRAMES_DIR/"*.png)
+    shopt -u nullglob
+fi
+
+if [ ${#files[@]} -eq 0 ]; then
+    echo "ERROR: No se encontraron frames en $SCRIPT_DIR/frames ni en ../Bad-Apple-On-Arduino-LCD-main/pngs"
+    echo "Ejecuta ./gen_video.sh para extraerlos desde el video MP4."
+    exit 1
+fi
+
+echo "╔══════════════════════════════════════════╗"
+echo "║  Generador de frames para PIC18F4550     ║"
+echo "║  Set de frames (20x16, sin gaps)         ║"
+echo "║  Flash disponible: ~28 KB por parte      ║"
+echo "╚══════════════════════════════════════════╝"
 echo ""
-
-read -p "¿Qué frames usar? [1/2]: " CHOICE
-
-case "$CHOICE" in
-    1)
-        if ! $HAS_1000; then echo "No disponibles."; exit 1; fi
-        FRAMES="$SCRIPT_DIR/$FRAMES_1000"
-        GAPS="--no-gaps"
-        echo ""
-        echo "Usando 1000 frames. Con threshold=2, los 1000 caben completos."
-        ;;
-    2)
-        if ! $HAS_76; then echo "No disponibles."; exit 1; fi
-        FRAMES="$SCRIPT_DIR/$FRAMES_76"
-        GAPS=""
-        echo ""
-        echo "Usando 76 frames (todos caben sin problema)."
-        ;;
-    *)
-        echo "Opción inválida."; exit 1
-        ;;
-esac
-
+echo "Carpeta origen:    $FRAMES_DIR"
+echo "Frames detectados: ${#files[@]}"
 echo ""
 echo "Configuración de compresión:"
-echo "  [1] Lossless   (threshold=0) - Calidad perfecta (~792 frames max)"
-echo "  [2] Suave      (threshold=2) - 1000 frames, pérdida mínima ← RECOMENDADO"
-echo "  [3] Agresiva   (threshold=5) - 1000 frames, más espacio libre"
+echo "  [1] Lossless   (threshold=0) - Calidad perfecta (~790 frames máx en 1 parte)"
+echo "  [2] Suave      (threshold=2) - 1000 frames COMPLETOS en flash ← RECOMENDADO"
+echo "  [3] Agresiva   (threshold=4) - 1000 frames, aún más espacio libre"
 echo ""
 read -p "¿Nivel de compresión? [1/2/3] (default: 2): " COMP
 
 case "$COMP" in
     1) THRESHOLD=0 ;;
-    3) THRESHOLD=5 ;;
+    3) THRESHOLD=4 ;;
     *) THRESHOLD=2 ;;
 esac
 
@@ -78,11 +72,12 @@ FPS=${FPS_INPUT:-10}
 
 echo ""
 echo "Generando con: --pic18 --threshold $THRESHOLD --fps $FPS"
+echo "Python: $PYTHON"
 echo "─────────────────────────────────────────────"
 
-python3 "$CONVERTER" \
-    --frames "$FRAMES" \
-    $GAPS \
+"$PYTHON" "$CONVERTER" \
+    --frames "$FRAMES_DIR/*.png" \
+    --no-gaps \
     --pic18 \
     --threshold "$THRESHOLD" \
     --fps "$FPS" \
@@ -90,7 +85,7 @@ python3 "$CONVERTER" \
 
 if [ $? -eq 0 ]; then
     echo ""
-    echo "✅ Archivo generado: $OUTPUT"
-    echo "   Cópialo junto a badapple_pic.c y compila con CCS C v5."
-    echo "   Asegúrate de tener: #define USE_PIC18"
+    echo "✅ Conversión completa lista para CCS C v5."
+    echo "   Archivo generado: $OUTPUT"
+    echo "   Abre badapple_pic.c y asegúrate de tener: #define USE_PIC18"
 fi
