@@ -112,7 +112,7 @@ El proyecto utiliza el LCD 16x2 en **modo de 4 bits** conectado al **PUERTO D** 
              │                     GND │───────────│ VSS (pin 1)       │
              │                     +5V │───────────│ VDD (pin 2)       │
              │                         │           │                   │
-             │                     GND ├──[POT 10K]┤ V0 (pin 3, Cont.) │
+             │                     GND ├──[POT 10K]─┤ V0 (pin 3, Cont.) │
              │                         │      │    │                   │
              │                     +5V ├──[220Ω]───│ A (pin 15, Ánodo) │
              │                     GND ────────────│ K (pin 16, Cátodo)│
@@ -144,9 +144,11 @@ El proyecto utiliza el LCD 16x2 en **modo de 4 bits** conectado al **PUERTO D** 
 
 ## 🛠️ Cómo Compilar con CCS C Compiler v5
 
-1. Abre **CCS PIC C Compiler** (PCWHD) o tu IDE preferido (como **MPLAB X** con el plugin CCS integrado).
-2. Abre el proyecto o el archivo [`badapple_pic.c`](file:///home/vibecode/DevS/bad%20apple/pic_port/badapple_pic.c).
-3. Asegúrate de que tanto la carpeta [`lcd_flex/`](file:///home/vibecode/DevS/bad%20apple/pic_port/lcd_flex/) como [`frame_data.h`](file:///home/vibecode/DevS/bad%20apple/pic_port/frame_data.h) estén en el mismo directorio que `badapple_pic.c`.
+1. Abre **CCS PIC C Compiler** (PCWHD) o tu IDE preferido (como **MPLAB X** con el plugin CCS integrado, o pueden usar el SublimeText Build system que cree buscan el repo ).
+2. Abre el proyecto o el archivo [`badapple_pic.c`](badapple_pic.c).
+3. Asegúrate de que tienes lcd_flex en tu sistema,puedes consultar mi repo y descargarlo
+[`lcd_flex/`](file://lcd_flex/)
+También que se haya generado [`frame_data.h`](file://frame_data.h) correctamente y que lo incluya en`badapple_pic.c` según las parte correspondiente a su complicacion.
 4. En las primeras líneas de `badapple_pic.c`, descomenta el microcontrolador que vas a utilizar:
 
 ```c
@@ -168,7 +170,7 @@ En CCS C, el driver de fábrica `<lcd.c>` tiene dos limitaciones críticas que p
 1. **Nombres de pines estrictos**: Exige que se definan exactamente los 7 pines con los nombres `LCD_DATA4..7`, `LCD_ENABLE_PIN`, `LCD_RS_PIN`, y `LCD_RW_PIN`. Si se define `LCD_DATA4` pero falta `LCD_RW_PIN` o se usa `LCD_EN`, la librería desactiva la estructura `lcdlat` e intenta acceder a ella, provocando el fallo al compilar.
 2. **Obligatoriedad del pin RW**: `<lcd.c>` no permite conectar RW a GND (modo 6 pines); siempre intenta leer el busy flag (`while(bit_test(lcd_read_byte(), 7))`). Si RW está a GND, el microcontrolador se bloquea esperando una respuesta que la pantalla nunca enviará.
 
-[`flex_lcd.c`](file:///home/vibecode/DevS/bad%20apple/pic_port/flex_lcd.c) resuelve ambos problemas:
+[`flex_lcd.c`](file://flex_lcd.c) resuelve ambos problemas:
 - Permite mapear cualquier pin en cualquier orden.
 - Funciona perfectamente con **RW conectado a GND (modo 6 pines)** usando retardos de microsegundos seguros.
 - No depende de `lcdlat` ni de registros específicos de familia.
