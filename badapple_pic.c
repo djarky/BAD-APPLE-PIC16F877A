@@ -80,7 +80,8 @@
 #define LCD_EN     PIN_D3
 
 // Driver flexible (soporta RW a GND y compatible con LiquidCrystal de Arduino)
-#include "lcd_flex/lcd_flex.c"
+#include <lcd_flex.h>
+//ver repo lcd_flex_ccs de djarky
 
 // NOTA: Si en el futuro deseas usar la librería de fábrica <lcd.c>,
 // debes conectar obligatoriamente el pin RW a un pin del PIC y definir:
