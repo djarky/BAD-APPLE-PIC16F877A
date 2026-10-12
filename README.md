@@ -10,16 +10,16 @@ Basado en el algoritmo de compresión por deltas de `img2lcdino` (arduinocelenta
 
 | Archivo | Descripción |
 |---|---|
-| [`badapple_pic.c`](file:///home/vibecode/DevS/bad%20apple/pic_port/badapple_pic.c) | Código fuente en C para CCS Compiler v5. Soporta PIC16F877A y PIC18F4550 mediante un simple `#define`. |
-| [`lcd_flex/`](file:///home/vibecode/DevS/bad%20apple/pic_port/lcd_flex/) | Driver flexible y avanzado para LCD 16x2 y 20x4 en CCS C, con paridad total frente a `LiquidCrystal` de Arduino. |
-| [`setup_env.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/setup_env.sh) | **Configurador del entorno Python**: Crea `.venv` e instala dependencias (Pillow, OpenCV) sin requerir `sudo`. |
-| [`video2frames.py`](file:///home/vibecode/DevS/bad%20apple/pic_port/video2frames.py) | **Extractor de frames**: Lee el video MP4 local y guarda los frames 20x16 binarizados en `frames/`. |
-| [`img2pic.py`](file:///home/vibecode/DevS/bad%20apple/pic_port/img2pic.py) | Conversor de frames PNG a datos delta organizados en chunks de 512B con switch `rom_read`. Soporta multi-parte automático. |
-| [`gen_video.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_video.sh) | **Extractor desde video MP4 local**: Busca el video en esta carpeta y extrae los fotogramas a la carpeta `frames/`. |
-| [`gen_pic18.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_pic18.sh) | Generador para **PIC18F4550** (~28 KB útiles, hasta **1000 frames completos** en 1 parte). |
-| [`gen_pic16.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_pic16.sh) | Generador para **PIC16F877A** (~4.5 KB útiles por parte, genera automáticamente `frame_data.h`, `frame_data2.h`, etc.). |
-| [`gen_rapido.sh`](file:///home/vibecode/DevS/bad%20apple/pic_port/gen_rapido.sh) | **Generación rápida de 1 comando**: Usa la carpeta `frames/` para generar `frame_data.h` directamente. |
-| [`frame_data.h`](file:///home/vibecode/DevS/bad%20apple/pic_port/frame_data.h) | Cabecera C generada con los metadatos y el array de animación en ROM. |
+| [`badapple_pic.c`](file://badapple_pic.c) | Código fuente en C para CCS Compiler v5. Soporta PIC16F877A y PIC18F4550 mediante un simple `#define`. |
+| [`lcd_flex/`](file://lcd_flex/) | Driver flexible y avanzado para LCD 16x2 y 20x4 en CCS C, con paridad total frente a `LiquidCrystal` de Arduino. |
+| [`setup_env.sh`](file://setup_env.sh) | **Configurador del entorno Python**: Crea `.venv` e instala dependencias (Pillow, OpenCV) sin requerir `sudo`. |
+| [`video2frames.py`](file://video2frames.py) | **Extractor de frames**: Lee el video MP4 local y guarda los frames 20x16 binarizados en `frames/`. |
+| [`img2pic.py`](file://img2pic.py) | Conversor de frames PNG a datos delta organizados en chunks de 512B con switch `rom_read`. Soporta multi-parte automático. |
+| [`gen_video.sh`](file://gen_video.sh) | **Extractor desde video MP4 local**: Busca el video en esta carpeta y extrae los fotogramas a la carpeta `frames/`. |
+| [`gen_pic18.sh`](file://gen_pic18.sh) | Generador para **PIC18F4550** (~28 KB útiles, hasta **1000 frames completos** en 1 parte). |
+| [`gen_pic16.sh`](file://gen_pic16.sh) | Generador para **PIC16F877A** (~4.5 KB útiles por parte, genera automáticamente `frame_data.h`, `frame_data2.h`, etc.). |
+| [`gen_rapido.sh`](file://gen_rapido.sh) | **Generación rápida de 1 comando**: Usa la carpeta `frames/` para generar `frame_data.h` directamente. |
+| [`frame_data.h`](file://frame_data.h) | Cabecera C generada con los metadatos y el array de animación en ROM. |
 
 ---
 
