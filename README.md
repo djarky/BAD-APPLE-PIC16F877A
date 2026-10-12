@@ -6,7 +6,7 @@ Basado en el algoritmo de compresión por deltas de `img2lcdino` (arduinocelenta
 
 ---
 
-## 📁 Archivos en este directorio
+## 📁 Archivos en este proyecto
 
 | Archivo | Descripción |
 |---|---|
@@ -23,9 +23,9 @@ Basado en el algoritmo de compresión por deltas de `img2lcdino` (arduinocelenta
 
 ---
 
-## ⚡ Preparación del Entorno (100% sin sudo)
+## ⚡ Preparación del Entorno:
 
-Para asegurar que todo funcione sin modificar paquetes del sistema operativo ni requerir privilegios de superusuario (`sudo`):
+Para asegurar que todo funcione se establece un env donde se instalan las librerías necesarias de python 
 
 ```bash
 # Desde pic_port/:
