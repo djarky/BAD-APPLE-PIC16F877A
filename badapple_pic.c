@@ -23,8 +23,8 @@
 // ============================================================
 //  SELECCIÓN DE PIC (descomentar UNO)
 // ============================================================
-//#define USE_PIC16    // PIC16F877A — ~6 KB para datos, ~170-480 frames
-#define USE_PIC18    // PIC18F4550 — ~28 KB para datos, ~790-1000 frames
+#define USE_PIC16    // PIC16F877A — ~6 KB para datos, ~170-480 frames
+//#define USE_PIC18    // PIC18F4550 — ~28 KB para datos, ~790-1000 frames
 
 // ============================================================
 //  CONFIGURACIÓN PIC16F877A
@@ -80,8 +80,7 @@
 #define LCD_EN     PIN_D3
 
 // Driver flexible (soporta RW a GND y compatible con LiquidCrystal de Arduino)
-#include <lcd_flex.h>
-//ver repo lcd_flex_ccs de djarky
+#include "lcd_flex/lcd_flex.c"
 
 // NOTA: Si en el futuro deseas usar la librería de fábrica <lcd.c>,
 // debes conectar obligatoriamente el pin RW a un pin del PIC y definir:
@@ -95,10 +94,55 @@
 //   #include <lcd.c>
 
 // ============================================================
-//  DATOS DE FRAMES COMPRIMIDOS
+//  DATOS DE FRAMES COMPRIMIDOS (SELECCIÓN DE PARTE)
 // ============================================================
-// Generados con img2pic.py — ver instrucciones al final del archivo
-#include "frame_data.h"
+// Si el video fue dividido en partes (ej. en PIC16: Parte 1, Parte 2, Parte 3...),
+// selecciona qué parte compilar cambiando USE_PART (1, 2, 3, etc.):
+#define USE_PART  2
+
+#if USE_PART == 1
+  #include "frame_data.h"
+#elif USE_PART == 2
+  #include "frame_data2.h"
+#elif USE_PART == 3
+  #include "frame_data3.h"
+#elif USE_PART == 4
+  #include "frame_data4.h"
+#elif USE_PART == 5
+  #include "frame_data5.h"
+#elif USE_PART == 6
+  #include "frame_data6.h"
+#elif USE_PART == 7
+  #include "frame_data7.h"
+#elif USE_PART == 8
+  #include "frame_data8.h"
+#elif USE_PART == 9
+  #include "frame_data9.h"
+#elif USE_PART == 10
+  #include "frame_data10.h"
+#elif USE_PART == 11
+  #include "frame_data11.h"
+#elif USE_PART == 12
+  #include "frame_data12.h"
+#elif USE_PART == 13
+  #include "frame_data13.h"
+#elif USE_PART == 14
+  #include "frame_data14.h"
+#elif USE_PART == 15
+  #include "frame_data15.h"
+#elif USE_PART == 16
+  #include "frame_data16.h"
+#elif USE_PART == 17
+  #include "frame_data17.h"
+#elif USE_PART == 18
+  #include "frame_data18.h"
+#elif USE_PART == 19
+  #include "frame_data19.h"
+#elif USE_PART == 20
+  #include "frame_data20.h"
+#else
+  #include "frame_data.h"
+#endif
 
 // ============================================================
 //  ACCESO A MEMORIA FLASH (ROM)
@@ -285,23 +329,17 @@ void main(void) {
     lcd_gotoxy(1, 1);
     lcd_puts("Frames: ");
     lcd_print_uint((unsigned int16)TOTAL_FRAMES, DEC);
+#if defined(PART_TOTAL) && (PART_TOTAL > 1)
+    lcd_gotoxy(12, 1);
+    lcd_puts("P");
+    lcd_print_uint((unsigned int16)PART_NUMBER, DEC);
+    lcd_puts("/");
+    lcd_print_uint((unsigned int16)PART_TOTAL, DEC);
+#endif
     lcd_gotoxy(1, 2);
     lcd_puts("FPS: ");
     lcd_print_uint((unsigned int16)(1000u / FRAME_DELAY_MS), DEC);
     delay_ms(2000);
-
-    // --- DIAGNÓSTICO: Verificar lectura via rom_read() (read_program_eeprom) ---
-    // rom_read(0) DEBE ser 0xFF (bitmask del frame 0: todos los 8 chars cambian)
-    // rom_read(1) DEBE ser 0x00 (fila 0 del char 0: sin píxeles en frame negro)
-    lcd_clear();
-    delay_ms(5);
-    lcd_gotoxy(1, 1);
-    lcd_puts("ROM[0]: 0x");
-    lcd_print_uint((unsigned int16)rom_read(0), HEX);
-    lcd_gotoxy(1, 2);
-    lcd_puts("ROM[1]: 0x");
-    lcd_print_uint((unsigned int16)rom_read(1), HEX);
-    delay_ms(3000);
 
     // --- Preparar pantalla para la animación ---
     lcd_clear();
@@ -309,6 +347,10 @@ void main(void) {
     init_cgram_blank();
     setup_lcd_positions();
 
+
+
+
+    
     // --- Bucle principal ---
     while (TRUE) {
         play_animation();
