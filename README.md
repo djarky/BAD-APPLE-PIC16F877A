@@ -90,6 +90,8 @@ El set de 1000 frames de Bad Apple se comprime con deltas entre frames. El pará
 
 > **Nota:** En el PIC18F4550 con `threshold=2`, el video completo de **1000 frames a 10 FPS (1 minuto 40 segundos ininterrumpidos)** cabe íntegramente dentro de los 32 KB de flash interna del microcontrolador sin requerir tarjetas SD ni memorias EEPROM externas.
 
+esta tabla comparativa es un mero invento de la IA, pero más o menos en 1000 Frames sin compresión no cabe en la pic18 por un 120% aprox, en los mismos 1000 Frames pero con compresión nivel 2, reduce la ROM un 75%, con compresión nivel 3 o 4 casi no cambia, en donde si se nota es en la pic16 donde en compresión 1 entran 150frames en compresión 2 entran 250fs en compresión 3 hasta 400frames, aunque tengo que hacer pruebas exactamente y actualizar a los valores correctos 
+
 ---
 
 ## 🔌 Conexiones de Hardware (Esquema y Pinout)
